@@ -2,14 +2,14 @@
 
 import { useState, useEffect, useCallback, useRef } from "react"
 import { Mic, MicOff, Volume2, VolumeX, Loader2 } from "lucide-react"
-import { voiceService } from "../utils/voiceService"
+import { voiceService } from "@/app/utils/voiceService"
 import {
   ADKSessionManager,
   SkinToneSessionManager,
   TakePictureSessionManager,
   WardrobeAnalysisSessionManager,
   classifyIntent
-} from "../utils/adkApi"
+} from "@/app/utils/adkApi"
 
 export default function VoiceAgent() {
   const [isListening, setIsListening] = useState(false)
@@ -94,11 +94,11 @@ export default function VoiceAgent() {
       setIsSpeaking(false)
 
       const success = voiceService.startListening(
-        (transcript) => {
+        (transcript: string) => {
           setIsListening(false)
           handleVoiceInput(transcript)
         },
-        (error) => {
+        (error: string) => {
           setIsListening(false)
           setError(error)
         },
