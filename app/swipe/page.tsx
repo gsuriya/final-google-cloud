@@ -3,6 +3,7 @@ import { useState, useEffect } from "react"
 import { X, Heart, Shirt, Filter } from "lucide-react"
 import AnimatedBackground from "../components/AnimatedBackground"
 import { useProducts, Product } from "../context/ProductContext"
+import Link from "next/link"
 
 interface FilterState {
   color?: string
@@ -246,12 +247,15 @@ export default function SwipePage() {
             <Heart className="text-white" size={24} />
           </button>
 
-          <button
+          <Link
+            href={filteredProducts[currentIndex] && filteredProducts[currentIndex].id ? {
+              pathname: `/try-on/${encodeURIComponent(filteredProducts[currentIndex].id)}`,
+            } : "/swipe"}
             className="w-14 h-14 rounded-full bg-gradient-to-r from-purple-500 to-indigo-500 flex items-center justify-center animate-pulse-glow"
             aria-label="Try on"
           >
             <Shirt className="text-white" size={24} />
-          </button>
+          </Link>
 
           <button
             onClick={() => setShowFilters(true)}
