@@ -2,8 +2,13 @@
 import { useState } from "react"
 import { Mic, MicOff } from "lucide-react"
 
-export default function VoiceAgent() {
-  const [isListening, setIsListening] = useState(false)
+interface VoiceAgentProps {
+  isListening: boolean
+  onToggleListening: () => void
+  transcript: string
+}
+
+export default function VoiceAgent({ isListening, onToggleListening, transcript }: VoiceAgentProps) {
   const [showTooltip, setShowTooltip] = useState(true)
 
   return (
@@ -11,7 +16,7 @@ export default function VoiceAgent() {
       <div className="relative">
         {/* Voice Bubble */}
         <button
-          onClick={() => setIsListening(!isListening)}
+          onClick={onToggleListening}
           className={`w-16 h-16 rounded-full glass-card flex items-center justify-center transition-all duration-300 ${
             isListening ? "animate-pulse-glow bg-gradient-to-r from-purple-500 to-pink-500" : "hover:scale-110"
           }`}
@@ -41,6 +46,15 @@ export default function VoiceAgent() {
               "Find me party outfits"
               <br />
               "What's trending?"
+            </p>
+          </div>
+        )}
+
+        {/* Transcript Display */}
+        {transcript && (
+          <div className="absolute top-20 left-0 w-80 glass-card rounded-2xl p-4 animate-fade-in backdrop-blur-md bg-white/10 border border-white/20 mt-2">
+            <p className="text-sm text-gray-200">
+              <span className="font-bold">You said:</span> {transcript}
             </p>
           </div>
         )}

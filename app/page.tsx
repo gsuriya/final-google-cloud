@@ -5,41 +5,186 @@ import AnimatedBackground from "./components/AnimatedBackground"
 import VoiceAgent from "./components/VoiceAgent"
 import BottomTabBar from "./components/BottomTabBar"
 
+// Type definitions for SpeechRecognition
+declare global {
+  interface Window {
+    webkitSpeechRecognition: any
+    SpeechRecognition: any
+  }
+}
+
+interface SpeechRecognitionEvent {
+  resultIndex: number
+  results: {
+    [key: number]: {
+      [key: number]: {
+        transcript: string
+      }
+      isFinal: boolean
+    }
+  }
+}
+
+interface SpeechRecognitionErrorEvent {
+  error: string
+}
+
 export default function HomePage() {
   const [micEnabled, setMicEnabled] = useState(false)
   const [speakerEnabled, setSpeakerEnabled] = useState(true)
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null)
+  const [audioStream, setAudioStream] = useState<MediaStream | null>(null)
+  const [isListening, setIsListening] = useState(false)
+  const [transcript, setTranscript] = useState("")
   const videoRef = useRef<HTMLVideoElement>(null)
+  const recognitionRef = useRef<any>(null)
 
-  // Initialize camera stream
+  // Initialize camera and microphone streams
   useEffect(() => {
-    const startCamera = async () => {
+    const startMediaStreams = async () => {
       try {
+        // Request both video and audio permissions
         const stream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: 'user',
             width: { ideal: 1920 },
             height: { ideal: 1080 }
+          },
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
           }
         })
+        
         setCameraStream(stream)
+        setAudioStream(stream)
+        
         if (videoRef.current) {
           videoRef.current.srcObject = stream
         }
       } catch (error) {
-        console.error('Error accessing camera:', error)
-        // Fallback to placeholder if camera access fails
+        console.error('Error accessing media devices:', error)
+        // Fallback to video only if audio fails
+        try {
+          const videoStream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: 'user',
+              width: { ideal: 1920 },
+              height: { ideal: 1080 }
+            }
+          })
+          setCameraStream(videoStream)
+          if (videoRef.current) {
+            videoRef.current.srcObject = videoStream
+          }
+        } catch (videoError) {
+          console.error('Error accessing camera:', videoError)
+        }
       }
     }
 
-    startCamera()
+    startMediaStreams()
 
     return () => {
       if (cameraStream) {
         cameraStream.getTracks().forEach(track => track.stop())
       }
+      if (audioStream) {
+        audioStream.getTracks().forEach(track => track.stop())
+      }
     }
   }, [])
+
+  // Handle microphone mute/unmute
+  const toggleMicrophone = () => {
+    if (audioStream) {
+      const audioTracks = audioStream.getAudioTracks()
+      audioTracks.forEach(track => {
+        track.enabled = !track.enabled
+      })
+      setMicEnabled(!micEnabled)
+    }
+  }
+
+  // Initialize speech recognition
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'webkitSpeechRecognition' in window) {
+      const SpeechRecognition = window.webkitSpeechRecognition || window.SpeechRecognition
+      recognitionRef.current = new SpeechRecognition()
+      
+      recognitionRef.current.continuous = true
+      recognitionRef.current.interimResults = true
+      recognitionRef.current.lang = 'en-US'
+
+      recognitionRef.current.onresult = (event: SpeechRecognitionEvent) => {
+        let finalTranscript = ''
+        let interimTranscript = ''
+
+        const resultKeys = Object.keys(event.results)
+        for (let i = event.resultIndex; i < resultKeys.length; i++) {
+          const transcript = event.results[i][0].transcript
+          if (event.results[i].isFinal) {
+            finalTranscript += transcript
+          } else {
+            interimTranscript += transcript
+          }
+        }
+
+        if (finalTranscript) {
+          setTranscript(finalTranscript)
+          // Process voice commands here
+          processVoiceCommand(finalTranscript.toLowerCase())
+        }
+      }
+
+      recognitionRef.current.onerror = (event: SpeechRecognitionErrorEvent) => {
+        console.error('Speech recognition error:', event.error)
+        setIsListening(false)
+      }
+
+      recognitionRef.current.onend = () => {
+        if (isListening) {
+          recognitionRef.current?.start()
+        }
+      }
+    }
+  }, [isListening])
+
+  // Process voice commands
+  const processVoiceCommand = (command: string) => {
+    console.log('Processing command:', command)
+    
+    if (command.includes('analyze') && command.includes('color')) {
+      // Navigate to color analysis
+      window.location.href = '/color-analysis'
+    } else if (command.includes('party') && command.includes('outfit')) {
+      // Navigate to swipe or closet
+      window.location.href = '/swipe'
+    } else if (command.includes('trending')) {
+      // Navigate to community
+      window.location.href = '/community'
+    } else if (command.includes('closet')) {
+      // Navigate to closet
+      window.location.href = '/closet'
+    }
+  }
+
+  // Toggle voice listening
+  const toggleVoiceListening = () => {
+    if (!recognitionRef.current) {
+      alert('Speech recognition not supported in this browser')
+      return
+    }
+
+    if (isListening) {
+      recognitionRef.current.stop()
+      setIsListening(false)
+    } else {
+      recognitionRef.current.start()
+      setIsListening(true)
+    }
+  }
 
   return (
     <div className="relative h-screen overflow-hidden">
@@ -71,7 +216,11 @@ export default function HomePage() {
       </div>
 
       {/* Voice Agent - Top Left */}
-      <VoiceAgent />
+      <VoiceAgent 
+        isListening={isListening}
+        onToggleListening={toggleVoiceListening}
+        transcript={transcript}
+      />
 
       {/* Centered Capture Button */}
       <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-30">
@@ -91,7 +240,7 @@ export default function HomePage() {
           <div className="flex justify-around items-center">
             {/* Mic Toggle */}
             <button
-              onClick={() => setMicEnabled(!micEnabled)}
+              onClick={toggleMicrophone}
               className={`w-14 h-14 rounded-full flex items-center justify-center transition-all duration-300 ${
                 micEnabled
                   ? "bg-gradient-to-r from-red-500 to-pink-500 animate-pulse-glow"
