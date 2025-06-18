@@ -7,7 +7,7 @@ export default function VoiceAgent() {
   const [showTooltip, setShowTooltip] = useState(true)
 
   return (
-    <div className="fixed top-6 left-6 z-40">
+    <div className="absolute top-6 left-6 z-40">
       <div className="relative">
         {/* Voice Bubble */}
         <button
