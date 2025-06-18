@@ -2,7 +2,7 @@
 
 import { useState, useEffect, use } from 'react'
 import CameraCapture from '../../components/CameraCapture'
-import { runTryOn, checkStatus } from '../../utils/fashnApi'
+import { runTryOn, checkStatus, testApiKey } from '../../utils/fashnApi'
 import { useProducts } from '../../context/ProductContext'
 
 export default function TryOnPage({ params }: { params: Promise<{ productId: string }> }) {
@@ -14,6 +14,8 @@ export default function TryOnPage({ params }: { params: Promise<{ productId: str
   const [resultImage, setResultImage] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [apiKeyValid, setApiKeyValid] = useState<boolean | null>(null)
+  const [testingApi, setTestingApi] = useState(false)
 
   // Find the product from the context
   useEffect(() => {
@@ -23,8 +25,26 @@ export default function TryOnPage({ params }: { params: Promise<{ productId: str
     }
   }, [products, resolvedParams.productId])
 
+  // Test API key on component mount
+  useEffect(() => {
+    const testApi = async () => {
+      setTestingApi(true)
+      const isValid = await testApiKey()
+      setApiKeyValid(isValid)
+      setTestingApi(false)
+    }
+    testApi()
+  }, [])
+
   // Debug logging
   console.log('Try-on page loaded with:', { productId: resolvedParams.productId, product })
+
+  const handleTestApiKey = async () => {
+    setTestingApi(true)
+    const isValid = await testApiKey()
+    setApiKeyValid(isValid)
+    setTestingApi(false)
+  }
 
   const handleCapture = async (imageBase64: string) => {
     setCapturedImage(imageBase64)
@@ -59,6 +79,30 @@ export default function TryOnPage({ params }: { params: Promise<{ productId: str
       
       <div className="relative z-10 p-4">
         <h1 className="text-3xl font-bold text-center mb-8 gradient-text">Virtual Try-On</h1>
+        
+        {/* API Key Test */}
+        <div className="glass-card rounded-2xl p-4 mb-4 max-w-2xl mx-auto">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-400">API Status:</p>
+              <p className={`text-sm font-semibold ${
+                apiKeyValid === null ? 'text-yellow-400' : 
+                apiKeyValid ? 'text-green-400' : 'text-red-400'
+              }`}>
+                {testingApi ? 'Testing...' : 
+                 apiKeyValid === null ? 'Not tested' :
+                 apiKeyValid ? '✅ API Key Valid' : '❌ API Key Invalid'}
+              </p>
+            </div>
+            <button
+              onClick={handleTestApiKey}
+              disabled={testingApi}
+              className="px-4 py-2 bg-gradient-to-r from-blue-500 to-purple-500 rounded-lg text-white text-sm font-semibold disabled:opacity-50"
+            >
+              {testingApi ? 'Testing...' : 'Test API Key'}
+            </button>
+          </div>
+        </div>
         
         {/* Debug Info */}
         <div className="glass-card rounded-2xl p-4 mb-4 max-w-2xl mx-auto">
