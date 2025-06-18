@@ -1,6 +1,6 @@
 "use client"
 import { useState, useRef, useEffect } from "react"
-import { Mic, MicOff, Volume2, VolumeX, Camera } from "lucide-react"
+import { Mic, MicOff, Volume2, VolumeX, Camera, Check } from "lucide-react"
 import AnimatedBackground from "./components/AnimatedBackground"
 import VoiceAgent from "./components/VoiceAgent"
 import BottomTabBar from "./components/BottomTabBar"
@@ -36,7 +36,10 @@ export default function HomePage() {
   const [audioStream, setAudioStream] = useState<MediaStream | null>(null)
   const [isListening, setIsListening] = useState(false)
   const [transcript, setTranscript] = useState("")
+  const [showCaptureNotification, setShowCaptureNotification] = useState(false)
+  const [capturedImage, setCapturedImage] = useState<string | null>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
   const recognitionRef = useRef<any>(null)
 
   // Initialize camera and microphone streams
@@ -104,6 +107,40 @@ export default function HomePage() {
         track.enabled = !track.enabled
       })
       setMicEnabled(!micEnabled)
+    }
+  }
+
+  // Capture photo from video stream
+  const capturePhoto = () => {
+    if (videoRef.current && canvasRef.current && cameraStream) {
+      const video = videoRef.current
+      const canvas = canvasRef.current
+      const context = canvas.getContext('2d')
+
+      if (context) {
+        // Set canvas dimensions to match video
+        canvas.width = video.videoWidth
+        canvas.height = video.videoHeight
+
+        // Draw the current video frame to canvas
+        context.drawImage(video, 0, 0, canvas.width, canvas.height)
+
+        // Convert canvas to data URL (base64 image)
+        const imageDataUrl = canvas.toDataURL('image/jpeg', 0.8)
+        setCapturedImage(imageDataUrl)
+
+        // Show notification
+        setShowCaptureNotification(true)
+        
+        // Hide notification after 3 seconds
+        setTimeout(() => {
+          setShowCaptureNotification(false)
+        }, 3000)
+
+        console.log('Photo captured! Image data:', imageDataUrl.substring(0, 100) + '...')
+      }
+    } else {
+      console.error('Cannot capture photo: video or canvas not available')
     }
   }
 
@@ -188,6 +225,9 @@ export default function HomePage() {
 
   return (
     <div className="relative h-screen overflow-hidden">
+      {/* Hidden canvas for photo capture */}
+      <canvas ref={canvasRef} className="hidden" />
+
       {/* Camera Preview - Full Screen Background */}
       <div className="absolute inset-0 z-0">
         {cameraStream ? (
@@ -225,7 +265,8 @@ export default function HomePage() {
       {/* Centered Capture Button */}
       <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-30">
         <button
-          className="w-20 h-20 rounded-full bg-gradient-to-r from-purple-500 via-pink-500 to-blue-500 animate-gradient flex items-center justify-center animate-pulse-glow shadow-2xl"
+          onClick={capturePhoto}
+          className="w-20 h-20 rounded-full bg-gradient-to-r from-purple-500 via-pink-500 to-blue-500 animate-gradient flex items-center justify-center animate-pulse-glow shadow-2xl hover:scale-110 transition-transform duration-200"
           aria-label="Capture photo"
         >
           <div className="w-16 h-16 rounded-full bg-white flex items-center justify-center">
@@ -233,6 +274,23 @@ export default function HomePage() {
           </div>
         </button>
       </div>
+
+      {/* Capture Notification */}
+      {showCaptureNotification && (
+        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50">
+          <div className="glass-card rounded-2xl p-6 backdrop-blur-md bg-white/10 border border-white/20 animate-fade-in">
+            <div className="flex items-center space-x-3">
+              <div className="w-12 h-12 rounded-full bg-green-500 flex items-center justify-center">
+                <Check className="text-white" size={24} />
+              </div>
+              <div>
+                <h3 className="text-white font-semibold text-lg">Photo Captured!</h3>
+                <p className="text-gray-300 text-sm">Your image has been saved</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Bottom Control Bar - Above Bottom Tab Bar */}
       <div className="absolute bottom-24 left-0 right-0 px-6 z-40">
