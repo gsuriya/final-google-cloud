@@ -2,24 +2,54 @@
 import { useState, useEffect } from "react"
 import { X, Heart, Shirt, Filter } from "lucide-react"
 import AnimatedBackground from "../components/AnimatedBackground"
-import { useProducts } from "../context/ProductContext"
+import { useProducts, Product } from "../context/ProductContext"
+
+interface FilterState {
+  color?: string
+  priceRange: [number, number]
+  season?: string
+  occasion?: string
+}
 
 export default function SwipePage() {
   const { products, loading, error, loadingProgress } = useProducts()
   
-  const [filteredProducts, setFilteredProducts] = useState(products)
+  const [filteredProducts, setFilteredProducts] = useState<Product[]>([])
   const [currentIndex, setCurrentIndex] = useState(0)
   const [showFilters, setShowFilters] = useState(false)
   const [swipeDirection, setSwipeDirection] = useState<null | 'left' | 'right'>(null)
   const [isAnimating, setIsAnimating] = useState(false)
+  const [filters, setFilters] = useState<FilterState>({
+    priceRange: [0, 500],
+  })
 
-  // Update filtered products when global products load/change
+  // Update filtered products when global products load or filters change
   useEffect(() => {
-    setFilteredProducts(products)
-    if (products.length > 0 && currentIndex === 0) {
-      setCurrentIndex(0)
+    let newFilteredProducts = [...products]
+
+    // Apply color filter
+    if (filters.color) {
+      newFilteredProducts = newFilteredProducts.filter(p => p.color.toLowerCase() === filters.color?.toLowerCase())
     }
-  }, [products])
+
+    // Apply season filter
+    if (filters.season) {
+      newFilteredProducts = newFilteredProducts.filter(p => p.season === filters.season)
+    }
+
+    // Apply occasion filter
+    if (filters.occasion) {
+      newFilteredProducts = newFilteredProducts.filter(p => p.occasion === filters.occasion)
+    }
+
+    // Apply price range filter
+    newFilteredProducts = newFilteredProducts.filter(
+      p => p.priceValue >= filters.priceRange[0] && p.priceValue <= filters.priceRange[1]
+    )
+
+    setFilteredProducts(newFilteredProducts)
+    setCurrentIndex(0)
+  }, [products, filters])
 
   const handleSwipe = (direction: "left" | "right") => {
     if (isAnimating || filteredProducts.length === 0) return
@@ -36,37 +66,17 @@ export default function SwipePage() {
       }
       setCurrentIndex(nextIndex)
       
-      // Reset animation for the new card to slide in
       setSwipeDirection(null)
-      setTimeout(() => setIsAnimating(false), 50) // Allow state to update
-    }, 300) // Corresponds to the animation duration
+      setTimeout(() => setIsAnimating(false), 50)
+    }, 300)
   }
 
-  // Filter functions
-  const applyFilters = (type?: string, color?: string, priceRange?: [number, number]) => {
-    let filtered = [...products]
-    
-    if (type) {
-      filtered = filtered.filter(product => 
-        product.type.toLowerCase().includes(type.toLowerCase())
-      )
-    }
-    
-    if (color) {
-      filtered = filtered.filter(product => 
-        product.color.toLowerCase().includes(color.toLowerCase())
-      )
-    }
-    
-    if (priceRange) {
-      filtered = filtered.filter(product => {
-        const price = parseFloat(product.price.replace('$', ''))
-        return price >= priceRange[0] && price <= priceRange[1]
-      })
-    }
-    
-    setFilteredProducts(filtered)
-    setCurrentIndex(0)
+  const handleFilterChange = (filterName: keyof FilterState, value: any) => {
+    setFilters(prev => ({ ...prev, [filterName]: value }))
+  }
+  
+  const clearFilters = () => {
+    setFilters({ priceRange: [0, 500] })
   }
 
   if (loading) {
@@ -112,10 +122,7 @@ export default function SwipePage() {
         <div className="relative z-10 text-center">
           <p className="text-white text-lg">No products match your filters</p>
           <button 
-            onClick={() => {
-              setFilteredProducts(products)
-              setCurrentIndex(0)
-            }}
+            onClick={clearFilters}
             className="mt-4 px-6 py-3 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg text-white font-semibold"
           >
             Clear Filters
@@ -124,8 +131,6 @@ export default function SwipePage() {
       </div>
     )
   }
-
-  const currentProduct = filteredProducts[currentIndex]
 
   return (
     <div className="min-h-screen relative pb-20">
@@ -270,17 +275,37 @@ export default function SwipePage() {
             </div>
 
             <div className="space-y-6">
-              {/* Product Types */}
+              {/* Season */}
               <div>
-                <h3 className="font-semibold mb-3">Product Types</h3>
+                <h3 className="font-semibold mb-3">Season</h3>
                 <div className="flex flex-wrap gap-2">
-                  {["T-Shirt", "Hoodie", "Sweater", "Jacket", "Pants"].map((type) => (
+                  {['All-Season', 'Fall', 'Winter', 'Spring', 'Summer'].map((season) => (
                     <button
-                      key={type}
-                      onClick={() => applyFilters(type)}
-                      className="px-4 py-2 bg-white/10 rounded-full text-sm hover:bg-white/20 transition-all duration-300"
+                      key={season}
+                      onClick={() => handleFilterChange('season', season)}
+                      className={`px-4 py-2 rounded-full text-sm transition-all duration-300 ${
+                        filters.season === season ? 'bg-purple-500 text-white' : 'bg-white/10 hover:bg-white/20'
+                      }`}
                     >
-                      {type}
+                      {season}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              
+              {/* Occasion */}
+              <div>
+                <h3 className="font-semibold mb-3">Occasion</h3>
+                <div className="flex flex-wrap gap-2">
+                  {['Casual', 'Professional', 'Lounge', 'Party', 'Formal'].map((occasion) => (
+                    <button
+                      key={occasion}
+                      onClick={() => handleFilterChange('occasion', occasion)}
+                      className={`px-4 py-2 rounded-full text-sm transition-all duration-300 ${
+                        filters.occasion === occasion ? 'bg-purple-500 text-white' : 'bg-white/10 hover:bg-white/20'
+                      }`}
+                    >
+                      {occasion}
                     </button>
                   ))}
                 </div>
@@ -290,11 +315,13 @@ export default function SwipePage() {
               <div>
                 <h3 className="font-semibold mb-3">Colors</h3>
                 <div className="flex flex-wrap gap-2">
-                  {["Black", "White", "Blue", "Red", "Green"].map((color) => (
+                  {['Black', 'White', 'Blue', 'Red', 'Green'].map((color) => (
                     <button
                       key={color}
-                      onClick={() => applyFilters(undefined, color)}
-                      className="px-4 py-2 bg-white/10 rounded-full text-sm hover:bg-white/20 transition-all duration-300"
+                      onClick={() => handleFilterChange('color', color)}
+                      className={`px-4 py-2 rounded-full text-sm transition-all duration-300 ${
+                        filters.color === color ? 'bg-purple-500 text-white' : 'bg-white/10 hover:bg-white/20'
+                      }`}
                     >
                       {color}
                     </button>
@@ -305,12 +332,17 @@ export default function SwipePage() {
               {/* Price Range */}
               <div>
                 <h3 className="font-semibold mb-3">Price Range</h3>
-                <div className="bg-white/10 rounded-full h-2 mb-2">
-                  <div className="bg-gradient-to-r from-purple-500 to-pink-500 h-2 rounded-full w-1/2"></div>
-                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="500"
+                  value={filters.priceRange[1]}
+                  onChange={(e) => handleFilterChange('priceRange', [0, parseInt(e.target.value)])}
+                  className="w-full"
+                />
                 <div className="flex justify-between text-sm text-gray-400">
                   <span>$0</span>
-                  <span>$500+</span>
+                  <span>${filters.priceRange[1]}</span>
                 </div>
               </div>
             </div>
@@ -318,8 +350,7 @@ export default function SwipePage() {
             <div className="flex gap-3 mt-6">
               <button 
                 onClick={() => {
-                  setFilteredProducts(products)
-                  setCurrentIndex(0)
+                  clearFilters()
                   setShowFilters(false)
                 }}
                 className="flex-1 bg-gray-600 text-white py-4 rounded-2xl font-semibold"

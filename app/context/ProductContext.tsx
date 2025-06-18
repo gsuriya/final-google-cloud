@@ -1,7 +1,7 @@
 "use client"
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react'
 
-interface Product {
+export interface Product {
   id: string
   image: string
   description: string
@@ -13,6 +13,10 @@ interface Product {
   price: string
   created_at: string
   stock_status: string
+  // Enriched data
+  season: 'Fall' | 'Winter' | 'Spring' | 'Summer' | 'All-Season'
+  occasion: 'Casual' | 'Professional' | 'Lounge' | 'Party' | 'Formal'
+  priceValue: number
 }
 
 interface ProductContextType {
@@ -23,6 +27,58 @@ interface ProductContextType {
 }
 
 const ProductContext = createContext<ProductContextType | undefined>(undefined)
+
+// --- LLM-like Metadata Enrichment Logic ---
+const keywords = {
+  seasons: {
+    Winter: ['winter', 'sweater', 'hoodie', 'coat', 'jacket', 'scarf', 'beanie', 'warm', 'cozy', 'fleece'],
+    Spring: ['spring', 'floral', 'lightweight', 'pastel', 'raincoat', 'blossom'],
+    Summer: ['summer', 'shorts', 'tank', 'beach', 'sunglasses', 'sandals', 'swimsuit', 'linen'],
+    Fall: ['fall', 'autumn', 'plaid', 'flannel', 'trench', 'boots', 'harvest'],
+  },
+  occasions: {
+    Professional: ['professional', 'work', 'office', 'blazer', 'suit', 'trousers', 'dress shirt'],
+    Lounge: ['lounge', 'sweatpants', 'comfy', 'home', 'relaxed', 'sleepwear'],
+    Party: ['party', 'dress', 'sequin', 'evening', 'celebration', 'going out'],
+    Formal: ['formal', 'gala', 'wedding', 'black tie', 'tuxedo', 'gown'],
+  },
+}
+
+const enrichProduct = (product: any): Product => {
+  const text = `${product.description.toLowerCase()} ${product.type.toLowerCase()}`
+
+  let season: Product['season'] = 'All-Season'
+  let occasion: Product['occasion'] = 'Casual'
+
+  // Score-based season detection
+  let maxSeasonScore = 0
+  for (const [s, kws] of Object.entries(keywords.seasons)) {
+    const score = kws.reduce((acc, kw) => acc + (text.includes(kw) ? 1 : 0), 0)
+    if (score > maxSeasonScore) {
+      maxSeasonScore = score
+      season = s as Product['season']
+    }
+  }
+
+  // Score-based occasion detection
+  let maxOccasionScore = 0
+  for (const [o, kws] of Object.entries(keywords.occasions)) {
+    const score = kws.reduce((acc, kw) => acc + (text.includes(kw) ? 1 : 0), 0)
+    if (score > maxOccasionScore) {
+      maxOccasionScore = score
+      occasion = o as Product['occasion']
+    }
+  }
+  
+  const priceValue = parseFloat(product.price.replace('$', ''))
+
+  return {
+    ...product,
+    season,
+    occasion,
+    priceValue,
+  }
+}
 
 export const ProductProvider = ({ children }: { children: ReactNode }) => {
   const [products, setProducts] = useState<Product[]>([])
@@ -56,40 +112,29 @@ export const ProductProvider = ({ children }: { children: ReactNode }) => {
             
             if (displayResponse.ok) {
               const displayData = await displayResponse.json()
-              productsWithImages.push({
-                id: displayData.id,
-                image: displayData.image,
-                description: displayData.description,
-                type: displayData.type,
-                color: displayData.color,
-                graphic: displayData.graphic,
-                variant: displayData.variant,
-                stock: displayData.stock,
-                price: displayData.price,
-                created_at: displayData.created_at,
-                stock_status: displayData.stock_status
-              })
+              const enrichedProduct = enrichProduct(displayData)
+              productsWithImages.push(enrichedProduct)
             } else {
-              productsWithImages.push({
+              productsWithImages.push(enrichProduct({
                 ...product,
                 image: "/placeholder.svg?height=600&width=400",
                 stock_status: product.stock > 0 ? "In Stock" : "Out of Stock"
-              })
+              }))
             }
           } catch (error) {
             console.error(`Error loading product ${product.id}:`, error)
-            productsWithImages.push({
+            productsWithImages.push(enrichProduct({
               ...product,
               image: "/placeholder.svg?height=600&width=400",
               stock_status: product.stock > 0 ? "In Stock" : "Out of Stock"
-            })
+            }))
           }
           
           const progress = 5 + ((i + 1) / allProducts.length) * 95
           setLoadingProgress(progress)
         }
         
-        console.log(`Globally loaded ${productsWithImages.length} products with images`)
+        console.log(`Globally loaded and enriched ${productsWithImages.length} products`)
         setProducts(productsWithImages)
         setError(null)
         
