@@ -6,10 +6,13 @@ import { useProducts, Product } from "../context/ProductContext"
 import Link from "next/link"
 
 interface FilterState {
-  color?: string
-  priceRange: [number, number]
   season?: string
   occasion?: string
+  store?: string
+  material?: string
+  sustainable?: boolean
+  filterColor?: string
+  priceRange: [number, number]
 }
 
 export default function SwipePage() {
@@ -21,17 +24,12 @@ export default function SwipePage() {
   const [swipeDirection, setSwipeDirection] = useState<null | 'left' | 'right'>(null)
   const [isAnimating, setIsAnimating] = useState(false)
   const [filters, setFilters] = useState<FilterState>({
-    priceRange: [0, 500],
+    priceRange: [0, 1000],
   })
 
   // Update filtered products when global products load or filters change
   useEffect(() => {
     let newFilteredProducts = [...products]
-
-    // Apply color filter
-    if (filters.color) {
-      newFilteredProducts = newFilteredProducts.filter(p => p.color.toLowerCase() === filters.color?.toLowerCase())
-    }
 
     // Apply season filter
     if (filters.season) {
@@ -43,10 +41,39 @@ export default function SwipePage() {
       newFilteredProducts = newFilteredProducts.filter(p => p.occasion === filters.occasion)
     }
 
+    // Apply store filter
+    if (filters.store) {
+      newFilteredProducts = newFilteredProducts.filter(p => p.store === filters.store)
+    }
+
+    // Apply material filter
+    if (filters.material) {
+      newFilteredProducts = newFilteredProducts.filter(p => p.material === filters.material)
+    }
+
+    // Apply sustainable filter
+    if (filters.sustainable !== undefined) {
+      newFilteredProducts = newFilteredProducts.filter(p => p.sustainable === filters.sustainable)
+    }
+
+    // Apply color filter (using filterColor instead of color)
+    if (filters.filterColor) {
+      newFilteredProducts = newFilteredProducts.filter(p => p.filterColor === filters.filterColor)
+    }
+
     // Apply price range filter
     newFilteredProducts = newFilteredProducts.filter(
       p => p.priceValue >= filters.priceRange[0] && p.priceValue <= filters.priceRange[1]
     )
+
+    console.log(`🎯 Filtering: ${products.length} → ${newFilteredProducts.length} products`, {
+      totalProducts: products.length,
+      filteredProducts: newFilteredProducts.length,
+      activeFilters: Object.entries(filters).filter(([key, value]) => 
+        key !== 'priceRange' ? value !== undefined : value[0] !== 0 || value[1] !== 1000
+      ),
+      filters
+    })
 
     setFilteredProducts(newFilteredProducts)
     setCurrentIndex(0)
@@ -77,8 +104,21 @@ export default function SwipePage() {
   }
   
   const clearFilters = () => {
-    setFilters({ priceRange: [0, 500] })
+    setFilters({ priceRange: [0, 1000] })
   }
+
+  // Get unique filter options from products for dynamic filter generation
+  const getFilterOptions = () => {
+    const seasons = [...new Set(products.map(p => p.season))].sort()
+    const occasions = [...new Set(products.map(p => p.occasion))].sort()
+    const stores = [...new Set(products.map(p => p.store))].sort()
+    const materials = [...new Set(products.map(p => p.material))].sort()
+    const colors = [...new Set(products.map(p => p.filterColor))].sort()
+    
+    return { seasons, occasions, stores, materials, colors }
+  }
+
+  const filterOptions = getFilterOptions()
 
   if (loading) {
     return (
@@ -116,17 +156,30 @@ export default function SwipePage() {
     )
   }
 
-  if (filteredProducts.length === 0) {
+  if (filteredProducts.length === 0 && !loading) {
     return (
       <div className="min-h-screen relative pb-20 flex items-center justify-center">
         <AnimatedBackground />
-        <div className="relative z-10 text-center">
-          <p className="text-white text-lg">No products match your filters</p>
+        <div className="relative z-10 text-center p-6">
+          <p className="text-white text-lg mb-4">No products match your current filters</p>
+          <div className="mb-4 p-4 bg-white/10 rounded-lg">
+            <p className="text-gray-300 text-sm mb-2">Active filters:</p>
+            <div className="flex flex-wrap gap-2 text-xs">
+              {Object.entries(filters).map(([key, value]) => {
+                if (key === 'priceRange' && (value[0] !== 0 || value[1] !== 1000)) {
+                  return <span key={key} className="px-2 py-1 bg-purple-500/50 rounded">Price: ${value[0]}-${value[1]}</span>
+                } else if (value !== undefined && key !== 'priceRange') {
+                  return <span key={key} className="px-2 py-1 bg-purple-500/50 rounded">{key}: {value.toString()}</span>
+                }
+                return null
+              }).filter(Boolean)}
+            </div>
+          </div>
           <button 
             onClick={clearFilters}
-            className="mt-4 px-6 py-3 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg text-white font-semibold"
+            className="px-6 py-3 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg text-white font-semibold"
           >
-            Clear Filters
+            Clear All Filters
           </button>
         </div>
       </div>
@@ -146,79 +199,100 @@ export default function SwipePage() {
         </div>
 
         {/* Product Card Container */}
-        <div className="relative h-[550px] mb-6">
+        <div className="relative h-[550px] mb-6 overflow-hidden">
           {filteredProducts.map((product, index) => {
             const isActive = index === currentIndex
+            const isNext = index === (currentIndex + 1) % filteredProducts.length
+            const isPrev = index === (currentIndex - 1 + filteredProducts.length) % filteredProducts.length
             
-            let transform = 'scale(0.9) translateY(20px) translateZ(-100px)'
+            let transform = 'scale(0.85) translateY(40px)'
             let opacity = 0
-            let zIndex = filteredProducts.length - index
+            let zIndex = 1
             
             if (isActive) {
               transform = swipeDirection
                 ? `translateX(${swipeDirection === 'right' ? 100 : -100}%) rotate(${swipeDirection === 'right' ? 15 : -15}deg)`
                 : 'scale(1) translateY(0) translateZ(0)'
               opacity = 1
-            } else if (index === (currentIndex - 1 + filteredProducts.length) % filteredProducts.length) {
-              transform = 'scale(0.9) translateY(20px) translateZ(-100px)'
+              zIndex = 30
+            } else if (isNext) {
+              transform = 'scale(0.9) translateY(20px)'
+              opacity = 0.4
+              zIndex = 20
+            } else if (isPrev) {
+              transform = 'scale(0.85) translateY(30px)'
+              opacity = 0.2
+              zIndex = 10
             }
-            
+
             return (
               <div
-                key={product.id}
-                className="absolute w-full h-full"
+                key={`${product.id}-${index}`}
+                className={`absolute inset-0 w-full transition-all duration-300 ease-out ${
+                  isActive ? 'pointer-events-auto' : 'pointer-events-none'
+                }`}
                 style={{
                   transform,
                   opacity,
                   zIndex,
-                  transition: 'transform 0.4s ease-out, opacity 0.4s ease-out',
                 }}
               >
-                <div className="glass-card rounded-3xl overflow-hidden h-full flex flex-col">
-                  <div className="relative">
-                    <img 
-                      src={product.image || "/placeholder.svg"} 
-                      alt={product.description || "Product"} 
-                      className="w-full h-96 object-cover"
+                <div className="glass-card rounded-3xl overflow-hidden h-full shadow-2xl border border-white/10">
+                  <div className="relative h-3/4">
+                    <img
+                      src={product.image}
+                      alt={product.description}
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        const target = e.target as HTMLImageElement;
+                        target.src = "/placeholder.svg?height=600&width=400";
+                      }}
                     />
-                    <div className="absolute top-4 right-4 bg-black/50 backdrop-blur-sm rounded-full px-3 py-1">
-                      <span className="text-white font-semibold">{product.price}</span>
-                    </div>
-                    <div className="absolute top-4 left-4 bg-black/50 backdrop-blur-sm rounded-full px-3 py-1">
-                      <span className="text-white text-sm">{product.stock_status}</span>
-                    </div>
-                  </div>
-
-                  <div className="p-6 flex-grow flex flex-col justify-between">
-                    <div>
-                      <div className="flex flex-wrap gap-2 mb-4">
-                        <span className="px-3 py-1 bg-gradient-to-r from-purple-500/20 to-pink-500/20 rounded-full text-sm border border-purple-500/30">
-                          {product.type}
+                    {/* Enhanced Product Badges - Only show on active card */}
+                    {isActive && (
+                      <div className="absolute top-4 left-4 flex flex-col gap-2 z-10">
+                        <span className="px-3 py-1 bg-purple-500/90 backdrop-blur-sm rounded-full text-white text-xs font-semibold shadow-lg">
+                          {product.season}
                         </span>
-                        <span className="px-3 py-1 bg-gradient-to-r from-blue-500/20 to-cyan-500/20 rounded-full text-sm border border-blue-500/30">
-                          {product.color}
+                        <span className="px-3 py-1 bg-blue-500/90 backdrop-blur-sm rounded-full text-white text-xs font-semibold shadow-lg">
+                          {product.occasion}
                         </span>
-                        {product.graphic && (
-                          <span className="px-3 py-1 bg-gradient-to-r from-green-500/20 to-emerald-500/20 rounded-full text-sm border border-green-500/30">
-                            {product.graphic.length > 20 ? product.graphic.substring(0, 20) + '...' : product.graphic}
+                        {product.sustainable && (
+                          <span className="px-3 py-1 bg-green-500/90 backdrop-blur-sm rounded-full text-white text-xs font-semibold shadow-lg">
+                            Sustainable
                           </span>
                         )}
                       </div>
-
-                      <div className="space-y-2">
-                        <div className="flex justify-between items-center">
-                          <span className="text-gray-300">{product.description}</span>
-                        </div>
-                        <div className="flex justify-between items-center">
-                          <span className="text-gray-400 text-sm">Variant: {product.variant}</span>
-                          <span className="text-gray-400 text-sm">Stock: {product.stock}</span>
-                        </div>
+                    )}
+                    
+                    {/* Price badge - top right */}
+                    {isActive && (
+                      <div className="absolute top-4 right-4 z-10">
+                        <span className="px-3 py-1 bg-black/70 backdrop-blur-sm rounded-full text-white text-sm font-bold shadow-lg">
+                          {product.price}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  
+                  <div className="p-6 h-1/4 flex flex-col justify-between bg-gradient-to-t from-black/10 to-transparent">
+                    <div>
+                      <h3 className="text-lg font-bold text-white mb-2 line-clamp-2">
+                        {product.description}
+                      </h3>
+                      <div className="flex justify-between items-center text-sm text-gray-300 mb-2">
+                        <span className="font-medium">{product.store}</span>
+                        <span className="text-gray-400">{product.material}</span>
                       </div>
                     </div>
-
-                    <div className="flex gap-4 mt-4 text-sm text-gray-400">
-                      <span>🆔 {product.id}</span>
-                      <span>📦 {product.type}</span>
+                    <div className="flex justify-between items-center">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-gray-400">Color:</span>
+                        <span className="text-sm font-medium text-white">{product.filterColor}</span>
+                      </div>
+                      <span className="text-xs text-gray-500 bg-white/10 px-2 py-1 rounded">
+                        {product.priceRange}
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -228,7 +302,7 @@ export default function SwipePage() {
         </div>
 
         {/* Action Buttons */}
-        <div className="flex justify-center gap-4">
+        <div className="flex justify-center gap-6 px-4">
           <button
             onClick={() => handleSwipe("left")}
             disabled={isAnimating}
@@ -267,10 +341,10 @@ export default function SwipePage() {
         </div>
       </div>
 
-      {/* Filter Drawer */}
+      {/* Enhanced Filter Drawer */}
       {showFilters && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end">
-          <div className="w-full glass-card rounded-t-3xl p-6 animate-slide-up">
+          <div className="w-full glass-card rounded-t-3xl p-6 animate-slide-up max-h-[80vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-xl font-bold gradient-text">Filters</h2>
               <button onClick={() => setShowFilters(false)} className="text-gray-400 hover:text-white">
@@ -281,9 +355,17 @@ export default function SwipePage() {
             <div className="space-y-6">
               {/* Season */}
               <div>
-                <h3 className="font-semibold mb-3">Season</h3>
+                <h3 className="font-semibold mb-3 text-white">Season</h3>
                 <div className="flex flex-wrap gap-2">
-                  {['All-Season', 'Fall', 'Winter', 'Spring', 'Summer'].map((season) => (
+                  <button
+                    onClick={() => handleFilterChange('season', undefined)}
+                    className={`px-4 py-2 rounded-full text-sm transition-all duration-300 ${
+                      !filters.season ? 'bg-purple-500 text-white' : 'bg-white/10 hover:bg-white/20'
+                    }`}
+                  >
+                    All
+                  </button>
+                  {filterOptions.seasons.map((season) => (
                     <button
                       key={season}
                       onClick={() => handleFilterChange('season', season)}
@@ -299,9 +381,17 @@ export default function SwipePage() {
               
               {/* Occasion */}
               <div>
-                <h3 className="font-semibold mb-3">Occasion</h3>
+                <h3 className="font-semibold mb-3 text-white">Occasion</h3>
                 <div className="flex flex-wrap gap-2">
-                  {['Casual', 'Professional', 'Lounge', 'Party', 'Formal'].map((occasion) => (
+                  <button
+                    onClick={() => handleFilterChange('occasion', undefined)}
+                    className={`px-4 py-2 rounded-full text-sm transition-all duration-300 ${
+                      !filters.occasion ? 'bg-purple-500 text-white' : 'bg-white/10 hover:bg-white/20'
+                    }`}
+                  >
+                    All
+                  </button>
+                  {filterOptions.occasions.map((occasion) => (
                     <button
                       key={occasion}
                       onClick={() => handleFilterChange('occasion', occasion)}
@@ -315,16 +405,107 @@ export default function SwipePage() {
                 </div>
               </div>
 
+              {/* Store */}
+              <div>
+                <h3 className="font-semibold mb-3 text-white">Store</h3>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={() => handleFilterChange('store', undefined)}
+                    className={`px-4 py-2 rounded-full text-sm transition-all duration-300 ${
+                      !filters.store ? 'bg-purple-500 text-white' : 'bg-white/10 hover:bg-white/20'
+                    }`}
+                  >
+                    All
+                  </button>
+                  {filterOptions.stores.map((store) => (
+                    <button
+                      key={store}
+                      onClick={() => handleFilterChange('store', store)}
+                      className={`px-4 py-2 rounded-full text-sm transition-all duration-300 ${
+                        filters.store === store ? 'bg-purple-500 text-white' : 'bg-white/10 hover:bg-white/20'
+                      }`}
+                    >
+                      {store}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Material */}
+              <div>
+                <h3 className="font-semibold mb-3 text-white">Material</h3>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={() => handleFilterChange('material', undefined)}
+                    className={`px-4 py-2 rounded-full text-sm transition-all duration-300 ${
+                      !filters.material ? 'bg-purple-500 text-white' : 'bg-white/10 hover:bg-white/20'
+                    }`}
+                  >
+                    All
+                  </button>
+                  {filterOptions.materials.map((material) => (
+                    <button
+                      key={material}
+                      onClick={() => handleFilterChange('material', material)}
+                      className={`px-4 py-2 rounded-full text-sm transition-all duration-300 ${
+                        filters.material === material ? 'bg-purple-500 text-white' : 'bg-white/10 hover:bg-white/20'
+                      }`}
+                    >
+                      {material}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Sustainable */}
+              <div>
+                <h3 className="font-semibold mb-3 text-white">Sustainability</h3>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={() => handleFilterChange('sustainable', undefined)}
+                    className={`px-4 py-2 rounded-full text-sm transition-all duration-300 ${
+                      filters.sustainable === undefined ? 'bg-purple-500 text-white' : 'bg-white/10 hover:bg-white/20'
+                    }`}
+                  >
+                    All
+                  </button>
+                  <button
+                    onClick={() => handleFilterChange('sustainable', true)}
+                    className={`px-4 py-2 rounded-full text-sm transition-all duration-300 ${
+                      filters.sustainable === true ? 'bg-green-500 text-white' : 'bg-white/10 hover:bg-white/20'
+                    }`}
+                  >
+                    Sustainable Only
+                  </button>
+                  <button
+                    onClick={() => handleFilterChange('sustainable', false)}
+                    className={`px-4 py-2 rounded-full text-sm transition-all duration-300 ${
+                      filters.sustainable === false ? 'bg-gray-500 text-white' : 'bg-white/10 hover:bg-white/20'
+                    }`}
+                  >
+                    Standard Only
+                  </button>
+                </div>
+              </div>
+
               {/* Colors */}
               <div>
-                <h3 className="font-semibold mb-3">Colors</h3>
+                <h3 className="font-semibold mb-3 text-white">Colors</h3>
                 <div className="flex flex-wrap gap-2">
-                  {['Black', 'White', 'Blue', 'Red', 'Green'].map((color) => (
+                  <button
+                    onClick={() => handleFilterChange('filterColor', undefined)}
+                    className={`px-4 py-2 rounded-full text-sm transition-all duration-300 ${
+                      !filters.filterColor ? 'bg-purple-500 text-white' : 'bg-white/10 hover:bg-white/20'
+                    }`}
+                  >
+                    All
+                  </button>
+                  {filterOptions.colors.map((color) => (
                     <button
                       key={color}
-                      onClick={() => handleFilterChange('color', color)}
+                      onClick={() => handleFilterChange('filterColor', color)}
                       className={`px-4 py-2 rounded-full text-sm transition-all duration-300 ${
-                        filters.color === color ? 'bg-purple-500 text-white' : 'bg-white/10 hover:bg-white/20'
+                        filters.filterColor === color ? 'bg-purple-500 text-white' : 'bg-white/10 hover:bg-white/20'
                       }`}
                     >
                       {color}
@@ -335,38 +516,33 @@ export default function SwipePage() {
 
               {/* Price Range */}
               <div>
-                <h3 className="font-semibold mb-3">Price Range</h3>
-                <input
-                  type="range"
-                  min="0"
-                  max="500"
-                  value={filters.priceRange[1]}
-                  onChange={(e) => handleFilterChange('priceRange', [0, parseInt(e.target.value)])}
-                  className="w-full"
-                />
-                <div className="flex justify-between text-sm text-gray-400">
-                  <span>$0</span>
-                  <span>${filters.priceRange[1]}</span>
+                <h3 className="font-semibold mb-3 text-white">Price Range</h3>
+                <div className="px-2">
+                  <div className="flex justify-between mb-2 text-sm text-gray-300">
+                    <span>${filters.priceRange[0]}</span>
+                    <span>${filters.priceRange[1]}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="1000"
+                    step="25"
+                    value={filters.priceRange[1]}
+                    onChange={(e) => handleFilterChange('priceRange', [filters.priceRange[0], parseInt(e.target.value)])}
+                    className="w-full h-2 bg-white/20 rounded-lg appearance-none cursor-pointer"
+                  />
                 </div>
               </div>
-            </div>
 
-            <div className="flex gap-3 mt-6">
-              <button 
-                onClick={() => {
-                  clearFilters()
-                  setShowFilters(false)
-                }}
-                className="flex-1 bg-gray-600 text-white py-4 rounded-2xl font-semibold"
-              >
-                Clear Filters
-              </button>
-              <button 
-                onClick={() => setShowFilters(false)}
-                className="flex-1 bg-gradient-to-r from-purple-500 to-pink-500 text-white py-4 rounded-2xl font-semibold animate-pulse-glow"
-              >
-                Apply Filters
-              </button>
+              {/* Clear Filters Button */}
+              <div className="pt-4 border-t border-white/10">
+                <button
+                  onClick={clearFilters}
+                  className="w-full py-3 bg-gradient-to-r from-red-500 to-pink-500 rounded-lg text-white font-semibold"
+                >
+                  Clear All Filters
+                </button>
+              </div>
             </div>
           </div>
         </div>
