@@ -7,7 +7,7 @@ export default function VoiceAgent() {
   const [showTooltip, setShowTooltip] = useState(true)
 
   return (
-    <div className="absolute top-6 left-6 z-40">
+    <div className="absolute top-6 left-6 z-50">
       <div className="relative">
         {/* Voice Bubble */}
         <button
@@ -22,7 +22,7 @@ export default function VoiceAgent() {
 
         {/* Tooltip */}
         {showTooltip && (
-          <div className="absolute top-20 left-0 w-64 glass-card rounded-2xl p-4 animate-fade-in">
+          <div className="absolute top-20 left-0 w-64 glass-card rounded-2xl p-4 animate-fade-in backdrop-blur-md bg-white/10 border border-white/20">
             <button
               onClick={() => setShowTooltip(false)}
               className="absolute top-2 right-2 text-gray-400 hover:text-white"
