@@ -172,6 +172,68 @@ export async function sendWardrobeAnalysis(message: string, userId?: string, ses
   }
 }
 
+export async function sendSkinToneAnalysisWithImage(message: string, imageData: string, userId?: string, sessionId?: string): Promise<string> {
+  const request = {
+    user_id: userId || generateId(),
+    session_id: sessionId || generateId(),
+    message,
+    image_data: imageData
+  }
+
+  try {
+    const response = await fetch(`${ADK_BASE_URL}/skin-tone-analysis-with-image`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify(request)
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      throw new Error(`Skin tone analysis with image error: ${response.status} - ${errorText}`)
+    }
+
+    const result: ADKChatResponse = await response.json()
+    return result.response
+  } catch (error) {
+    console.error('Skin tone analysis with image error:', error)
+    throw new Error(error instanceof Error ? error.message : 'Failed to connect to skin tone analysis agent')
+  }
+}
+
+export async function sendWardrobeAnalysisWithImage(message: string, imageData: string, userId?: string, sessionId?: string): Promise<string> {
+  const request = {
+    user_id: userId || generateId(),
+    session_id: sessionId || generateId(),
+    message,
+    image_data: imageData
+  }
+
+  try {
+    const response = await fetch(`${ADK_BASE_URL}/wardrobe-analysis-with-image`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify(request)
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      throw new Error(`Wardrobe analysis with image error: ${response.status} - ${errorText}`)
+    }
+
+    const result: ADKChatResponse = await response.json()
+    return result.response
+  } catch (error) {
+    console.error('Wardrobe analysis with image error:', error)
+    throw new Error(error instanceof Error ? error.message : 'Failed to connect to wardrobe analysis agent')
+  }
+}
+
 // Session management for persistent conversations
 class ADKSessionManager {
   private userId: string

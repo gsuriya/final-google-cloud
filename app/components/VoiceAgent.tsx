@@ -8,10 +8,18 @@ import {
   SkinToneSessionManager,
   TakePictureSessionManager,
   WardrobeAnalysisSessionManager,
-  classifyIntent
+  classifyIntent,
+  sendSkinToneAnalysisWithImage,
+  sendWardrobeAnalysisWithImage
 } from "@/app/utils/adkApi"
 
-export default function VoiceAgent() {
+interface VoiceAgentProps {
+  capturedImage?: string | null
+  onTriggerCapture?: () => void
+  onImageAnalyzed?: () => void
+}
+
+export default function VoiceAgent({ capturedImage, onTriggerCapture, onImageAnalyzed }: VoiceAgentProps) {
   const [isListening, setIsListening] = useState(false)
   const [isSpeaking, setIsSpeaking] = useState(false)
   const [showTooltip, setShowTooltip] = useState(true)
@@ -19,6 +27,8 @@ export default function VoiceAgent() {
   const [error, setError] = useState<string | null>(null)
   const [transcript, setTranscript] = useState<string>("")
   const [lastIntent, setLastIntent] = useState<string>("")
+  const [waitingForPhoto, setWaitingForPhoto] = useState<string | null>(null) // 'skin_tone' or 'wardrobe'
+  const [lastMessage, setLastMessage] = useState<string>("")
 
   // ADK Session Managers for persistent conversations
   const sessionManagerRef = useRef<ADKSessionManager | null>(null)
@@ -34,8 +44,56 @@ export default function VoiceAgent() {
     wardrobeAnalysisSessionManagerRef.current = new WardrobeAnalysisSessionManager()
   }, [])
 
+  // Handle image analysis when photo is captured
+  useEffect(() => {
+    if (capturedImage && waitingForPhoto && lastMessage) {
+      handleImageAnalysis(waitingForPhoto, lastMessage, capturedImage)
+    }
+  }, [capturedImage, waitingForPhoto, lastMessage])
+
   // Check if voice features are supported
   const isVoiceSupported = voiceService.isSupported()
+
+  const handleImageAnalysis = useCallback(async (analysisType: string, message: string, imageData: string) => {
+    setIsProcessing(true)
+    setError(null)
+
+    try {
+      let aiResponse: string
+
+      if (analysisType === 'skin_tone') {
+        aiResponse = await sendSkinToneAnalysisWithImage(message, imageData)
+      } else if (analysisType === 'wardrobe') {
+        aiResponse = await sendWardrobeAnalysisWithImage(message, imageData)
+      } else {
+        aiResponse = "Oops! I'm not sure what to analyze in this photo. Please try again! 📸✨"
+      }
+
+      // Speak the response
+      voiceService.speak(aiResponse, () => {
+        setIsSpeaking(false)
+      })
+      setIsSpeaking(true)
+
+      // Clear waiting state
+      setWaitingForPhoto(null)
+      setLastMessage("")
+
+      // Notify parent that image has been analyzed
+      if (onImageAnalyzed) {
+        onImageAnalyzed()
+      }
+
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to analyze image'
+      setError(errorMessage)
+      console.error('Image analysis error:', err)
+      setWaitingForPhoto(null)
+      setLastMessage("")
+    } finally {
+      setIsProcessing(false)
+    }
+  }, [onImageAnalyzed])
 
   const handleVoiceInput = useCallback(async (userTranscript: string) => {
     if (!userTranscript.trim() || !sessionManagerRef.current || !skinToneSessionManagerRef.current ||
@@ -56,12 +114,22 @@ export default function VoiceAgent() {
       if (intent === 'skin_tone_analysis') {
         // Use the skin tone analysis session manager for persistent color conversations
         aiResponse = await skinToneSessionManagerRef.current.sendMessage(userTranscript)
+        // Set waiting for photo state for skin tone analysis
+        setWaitingForPhoto('skin_tone')
+        setLastMessage(userTranscript)
       } else if (intent === 'take_picture') {
         // Use the take picture session manager for photo guidance
         aiResponse = await takePictureSessionManagerRef.current.sendMessage(userTranscript)
+        // Trigger camera capture
+        if (onTriggerCapture) {
+          onTriggerCapture()
+        }
       } else if (intent === 'wardrobe_analysis') {
         // Use the wardrobe analysis session manager for outfit suggestions
         aiResponse = await wardrobeAnalysisSessionManagerRef.current.sendMessage(userTranscript)
+        // Set waiting for photo state for wardrobe analysis
+        setWaitingForPhoto('wardrobe')
+        setLastMessage(userTranscript)
       } else if (intent === 'update_filter') {
         aiResponse = "Got it! I understand you want to filter clothing options. While I can't directly update filters right now, I can definitely help you think about what styles, materials, or stores might work best for you! What specific type of clothing are you looking for? 👗✨"
       } else {
@@ -131,6 +199,8 @@ export default function VoiceAgent() {
     setTranscript("")
     setError(null)
     setLastIntent("")
+    setWaitingForPhoto(null)
+    setLastMessage("")
     console.log('All ADK sessions reset')
   }, [])
 

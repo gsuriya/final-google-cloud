@@ -1,7 +1,12 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, UploadFile, File, Form
 from pydantic import BaseModel
 import logging
 from fastapi.middleware.cors import CORSMiddleware
+import base64
+import io
+from PIL import Image
+import json
+from typing import Optional
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -23,8 +28,103 @@ class ChatRequest(BaseModel):
     session_id: str
     message: str
 
+class ImageAnalysisRequest(BaseModel):
+    user_id: str
+    session_id: str
+    message: str
+    image_data: str  # base64 encoded image
+
 class IntentRequest(BaseModel):
     transcript: str
+
+def analyze_image_colors(image_base64: str) -> dict:
+    """Simple color analysis from base64 image"""
+    try:
+        # Remove data:image/jpeg;base64, prefix if present
+        if "," in image_base64:
+            image_base64 = image_base64.split(",")[1]
+
+        # Decode base64 image
+        image_data = base64.b64decode(image_base64)
+        image = Image.open(io.BytesIO(image_data)).convert('RGB')
+
+        # Resize for processing
+        image = image.resize((100, 100))
+
+        # Get dominant colors
+        pixels = list(image.getdata())
+
+        # Simple color analysis - get average RGB
+        r_total = sum(p[0] for p in pixels)
+        g_total = sum(p[1] for p in pixels)
+        b_total = sum(p[2] for p in pixels)
+
+        avg_r = r_total // len(pixels)
+        avg_g = g_total // len(pixels)
+        avg_b = b_total // len(pixels)
+
+        # Determine skin tone characteristics
+        if avg_r > avg_g and avg_r > avg_b:
+            dominant_tone = "warm"
+        elif avg_b > avg_r and avg_b > avg_g:
+            dominant_tone = "cool"
+        else:
+            dominant_tone = "neutral"
+
+        return {
+            "avg_rgb": [avg_r, avg_g, avg_b],
+            "dominant_tone": dominant_tone,
+            "analysis_available": True
+        }
+    except Exception as e:
+        logger.error(f"Image analysis error: {e}")
+        return {
+            "avg_rgb": [0, 0, 0],
+            "dominant_tone": "neutral",
+            "analysis_available": False,
+            "error": str(e)
+        }
+
+def analyze_wardrobe_image(image_base64: str) -> dict:
+    """Simple wardrobe analysis from base64 image"""
+    try:
+        # Remove data:image/jpeg;base64, prefix if present
+        if "," in image_base64:
+            image_base64 = image_base64.split(",")[1]
+
+        # Decode base64 image
+        image_data = base64.b64decode(image_base64)
+        image = Image.open(io.BytesIO(image_data)).convert('RGB')
+
+        # Get image dimensions and colors for analysis
+        width, height = image.size
+
+        # Resize for color analysis
+        image_small = image.resize((50, 50))
+        pixels = list(image_small.getdata())
+
+        # Analyze color variety (simple approach)
+        unique_colors = len(set(pixels))
+        color_variety = "high" if unique_colors > 1000 else "medium" if unique_colors > 500 else "low"
+
+        # Simple brightness analysis
+        brightness_total = sum(sum(p) for p in pixels)
+        avg_brightness = brightness_total / (len(pixels) * 3)
+        brightness_level = "bright" if avg_brightness > 170 else "medium" if avg_brightness > 85 else "dark"
+
+        return {
+            "image_dimensions": [width, height],
+            "color_variety": color_variety,
+            "brightness_level": brightness_level,
+            "total_pixels": len(pixels),
+            "analysis_available": True
+        }
+    except Exception as e:
+        logger.error(f"Wardrobe image analysis error: {e}")
+        return {
+            "analysis_available": False,
+            "error": str(e)
+        }
 
 @app.get("/")
 async def root():
@@ -100,71 +200,119 @@ async def skin_tone_analysis_endpoint(req: ChatRequest):
     try:
         logger.info(f"Skin tone analysis request from user {req.user_id}: {req.message}")
 
-        message_lower = req.message.lower()
+        # First, suggest taking a photo for better analysis
+        response = "Hey gorgeous! 🌈✨ I'd love to analyze your skin tone! For the most accurate color analysis, I need to see a photo of you. Please take a selfie with good natural lighting so I can see your beautiful features clearly! 📸\n\nOnce you take the photo, I'll be able to give you personalized recommendations for:\n• Your undertone (warm, cool, or neutral)\n• Your perfect color season\n• Best makeup colors for you\n• Colors that make you glow! ✨\n\nJust say 'take a picture' and then come back to me for analysis! 💅🎨"
 
-        # Provide detailed skin tone analysis responses
-        if any(word in message_lower for word in ["what", "colors", "good", "me"]):
-            response = "OMG, I'm so excited to help you discover your best colors! 🎉 To give you the most amazing personalized advice, I need a little more information about you. Let's dive into the colorful details! 🌈\n\n1. **Skin Tone**: What is your natural skin color? (e.g., fair, light, medium, tan, deep). How does your skin react to the sun? Do you burn easily, tan easily, or both?\n2. **Undertones**: What color are the veins on your wrist? (Blue/purple = cool, Green = warm, Blue-green = neutral) How does your skin look with gold vs. silver jewelry? Which looks more flattering?\n3. **Hair & Eyes**: What is your natural hair color? What color are your eyes?\n\nOnce I have a better idea of your coloring, I can suggest colors that will make you absolutely glow! ✨ Let's find your perfect palette! 🎨"
-        elif any(word in message_lower for word in ["undertone", "veins", "wrist"]):
-            response = "Great question about undertones! 💫 Here's how to check: Look at the veins on your wrist in natural light. If they appear blue or purple, you likely have cool undertones. If they look green, you probably have warm undertones. If you can't tell or they look blue-green, you might be neutral! 🌈\n\nAlso try this: Hold up gold and silver jewelry to your face. Which one makes your skin look more radiant? Gold usually flatters warm undertones, while silver looks amazing on cool undertones! ✨"
-        elif any(word in message_lower for word in ["season", "spring", "summer", "autumn", "winter"]):
-            response = "Yasss, let's find your color season! 🎨 Here's the tea: **Spring** = warm, bright, clear colors. **Summer** = cool, soft, muted colors. **Autumn** = warm, rich, earthy colors. **Winter** = cool, bold, clear colors. 🌈\n\nTo figure yours out, think about: What colors do people always compliment you in? Do you look better in bright or soft colors? Warm or cool tones? Once we nail your season, I can give you the perfect color palette! ✨"
-        elif any(word in message_lower for word in ["makeup", "lipstick", "foundation"]):
-            response = "Makeup colors are everything! 💄 For foundation, you want to match your undertone, not just your skin tone. Warm undertones = yellow/golden foundations. Cool undertones = pink/blue-based foundations. Neutral = you're lucky, you can wear both! 🌟\n\nFor lipstick: Warm undertones rock coral, orange-red, and warm pinks. Cool undertones slay in blue-reds, berry, and cool pinks. Want me to help you find your perfect shade? 💋✨"
-        else:
-            response = "I'm your color analysis bestie! 🎨 Tell me more about your skin tone, undertones, or what specific colors you're curious about. I'm here to help you discover the colors that make you absolutely glow! ✨🌈"
-
-        return {"response": response, "intent": "skin_tone_analysis"}
+        return {"response": response, "intent": "skin_tone_analysis", "requires_photo": True}
     except Exception as e:
         logger.error(f"Skin tone analysis error: {e}")
         return {"response": f"Oops! Color analysis emergency! 🎨 Something went wrong: {str(e)}", "intent": "skin_tone_analysis"}
 
+@app.post("/skin-tone-analysis-with-image")
+async def skin_tone_analysis_with_image_endpoint(req: ImageAnalysisRequest):
+    """Analyze skin tone from uploaded image"""
+    try:
+        logger.info(f"Skin tone analysis with image from user {req.user_id}")
+
+        # Analyze the uploaded image
+        color_analysis = analyze_image_colors(req.image_data)
+
+        if not color_analysis["analysis_available"]:
+            return {"response": "Oops! I had trouble analyzing your photo 🤔 Let's try taking another one with better lighting! The clearer the photo, the better I can help you discover your perfect colors! ✨", "intent": "skin_tone_analysis"}
+
+        # Generate personalized response based on analysis
+        dominant_tone = color_analysis["dominant_tone"]
+        avg_rgb = color_analysis["avg_rgb"]
+
+        if dominant_tone == "warm":
+            response = f"OMG, I can see your beautiful warm undertones! 🌅✨ Based on your photo analysis, you have gorgeous warm coloring that would look absolutely stunning in:\n\n🎨 **Your Best Colors:**\n• Rich corals and warm pinks\n• Golden yellows and warm oranges\n• Earthy browns and warm reds\n• Cream and warm whites\n• Camel and warm beiges\n\n💄 **Makeup Magic:**\n• Golden/yellow-based foundations\n• Coral, peach, and warm pink lipsticks\n• Warm brown eyeshadows with gold accents\n• Bronze and gold highlighters\n\n✨ **Style Tip:** You're likely a Spring or Autumn - try gold jewelry and warm-toned clothes to make your natural beauty shine!"
+        elif dominant_tone == "cool":
+            response = f"Wow, your cool undertones are absolutely gorgeous! ❄️✨ Your photo shows beautiful cool coloring that would be stunning in:\n\n🎨 **Your Best Colors:**\n• True blues and cool purples\n• Cool pinks and berry tones\n• Emerald greens and teals\n• Pure whites and cool grays\n• Navy and charcoal\n\n💄 **Makeup Magic:**\n• Pink/blue-based foundations\n• Berry, rose, and cool pink lipsticks\n• Cool-toned eyeshadows with silver accents\n• Silver and pearl highlighters\n\n✨ **Style Tip:** You're likely a Summer or Winter - try silver jewelry and cool-toned clothes to complement your natural coolness!"
+        else:
+            response = f"Lucky you - you have beautiful neutral undertones! 🌈✨ This means you can wear both warm AND cool colors! Based on your photo:\n\n🎨 **Your Best Colors:**\n• Both warm and cool colors work for you!\n• Classic neutrals like navy, gray, and cream\n• Soft pastels and rich jewel tones\n• Both gold and silver look great\n\n💄 **Makeup Magic:**\n• You can wear most foundation shades\n• Try both warm and cool lipstick tones\n• Experiment with different eyeshadow colors\n• Both gold and silver highlighters work\n\n✨ **Style Tip:** You have the ultimate flexibility! Try mixing warm and cool pieces for unique, personalized looks!"
+
+        return {"response": response, "intent": "skin_tone_analysis", "analysis": color_analysis}
+    except Exception as e:
+        logger.error(f"Skin tone analysis with image error: {e}")
+        return {"response": f"Oops! Color analysis emergency! 🎨 Something went wrong: {str(e)}", "intent": "skin_tone_analysis"}
+
 @app.post("/take-picture")
 async def take_picture_endpoint(req: ChatRequest):
-    """Handle take picture requests and guide users through photo capture"""
+    """Handle take picture requests and trigger photo capture"""
     try:
         logger.info(f"Take picture request from user {req.user_id}: {req.message}")
 
         message_lower = req.message.lower()
 
-        # Provide photo capture guidance
-        if any(word in message_lower for word in ["take", "picture", "photo", "camera"]):
-            response = "Perfect! Let's capture that amazing shot! 📸✨ For the best wardrobe photo, make sure you have good natural lighting and stand back so I can see all your fabulous clothes clearly. Ready when you are - just tap the camera button and let's get that perfect wardrobe shot! 📸🎉"
+        # Provide photo capture guidance and trigger capture
+        if any(word in message_lower for word in ["take", "picture", "photo", "camera", "capture", "snap"]):
+            response = "Perfect! Let's capture that amazing shot! 📸✨ I can see your camera is ready! For the best photo:\n\n💡 **Lighting Tips:**\n• Use natural light near a window\n• Avoid harsh shadows or dark corners\n• Make sure your face/wardrobe is well-lit\n\n📸 **Photo Tips:**\n• Stand at a good distance so I can see everything clearly\n• Make sure the image isn't blurry\n• Try to have a clean background\n\nReady? Tap the camera button to take your photo! I'll be here to analyze it once you're done! 🎉✨"
         elif any(word in message_lower for word in ["help", "how", "tips"]):
-            response = "Here are my top photo tips! 📸 Use natural light near a window, step back so I can see your whole wardrobe, and make sure clothes aren't too cluttered together. The better the photo, the better outfit suggestions I can give you! Ready to snap that perfect shot? 📸✨"
+            response = "Here are my top photo tips! 📸\n\n🌟 **For Wardrobe Photos:**\n• Stand back so I can see your whole outfit/closet\n• Good lighting shows true colors\n• Avoid cluttered backgrounds\n\n🌟 **For Selfies (skin analysis):**\n• Natural light is your best friend\n• Face the camera directly\n• Remove makeup if possible for accurate analysis\n\nJust tap the camera button when you're ready! 📸✨"
         elif any(word in message_lower for word in ["lighting", "light"]):
-            response = "Great question about lighting! 💡 Natural light from a window is your best friend - it shows the true colors of your clothes! Avoid harsh overhead lights or dark corners. Position yourself so the light hits your wardrobe evenly. You've got this! 📸✨"
+            response = "Great question about lighting! 💡 Natural light from a window is your best friend - it shows the true colors and details! Avoid:\n\n❌ Harsh overhead lights\n❌ Dark corners or shadows\n❌ Colorful lighting (like neon)\n\n✅ DO use:\n• Soft window light\n• Even, diffused lighting\n• Face the light source\n\nPosition yourself so the light hits you evenly. You've got this! 📸✨"
         else:
-            response = "I'm here to help you take the perfect wardrobe photo! 📸 Just tell me when you're ready and I'll guide you through getting that amazing shot of your closet! The better the photo, the better outfit suggestions I can give you! 📸✨"
+            response = "I'm SHUTTERBUG, your photo assistant! 📸✨ I'm here to help you take the perfect photo for analysis! Whether it's a selfie for skin tone analysis or a wardrobe shot for outfit suggestions, I'll guide you through it!\n\nJust tell me what kind of photo you want to take, and I'll give you the best tips! Ready when you are! 🎉"
 
-        return {"response": response, "intent": "take_picture"}
+        return {"response": response, "intent": "take_picture", "trigger_camera": True}
     except Exception as e:
         logger.error(f"Take picture error: {e}")
         return {"response": f"Oops! Camera emergency! 📸 Something went wrong: {str(e)}", "intent": "take_picture"}
 
 @app.post("/wardrobe-analysis")
 async def wardrobe_analysis_endpoint(req: ChatRequest):
-    """Analyze wardrobe photos and provide outfit suggestions"""
+    """Analyze wardrobe and provide outfit suggestions - requires photo"""
     try:
         logger.info(f"Wardrobe analysis request from user {req.user_id}: {req.message}")
 
-        message_lower = req.message.lower()
+        # Always request a photo first for wardrobe analysis
+        response = "Hey gorgeous! 👗✨ I'm WARDROBISTA, your personal wardrobe expert! To give you the most amazing outfit suggestions, I need to see your fabulous wardrobe! \n\n📸 **Please take a photo of:**\n• Your closet or wardrobe\n• A specific outfit you're considering\n• Clothes laid out on your bed\n• Or whatever you want me to analyze!\n\n💡 **Photo Tips:**\n• Good lighting shows true colors\n• Stand back so I can see everything\n• Make sure clothes are clearly visible\n\nOnce you take the photo, I'll analyze it and give you personalized outfit suggestions! Just say 'take a picture' first! 🎉📸"
 
-        # Provide wardrobe analysis and outfit suggestions
-        if any(word in message_lower for word in ["analyze", "analysis", "wardrobe", "closet"]):
-            response = "OMG, I'm so excited to dive into your wardrobe! 🎉👗 I can see some amazing pieces in there! I spot what looks like versatile basics that can create multiple stunning outfits. Here are my top suggestions:\n\n**Outfit 1**: Try pairing that white/light colored top with dark bottoms - it's classic and always chic! ✨\n**Outfit 2**: Look for pieces that can layer - cardigans over dresses or blouses create depth and style!\n**Outfit 3**: Mix textures and colors you see - don't be afraid to combine different pieces!\n\nYour wardrobe has so much potential! What occasion are you dressing for? 👗✨"
-        elif any(word in message_lower for word in ["occasion", "work", "date", "casual", "formal"]):
-            response = "Perfect! Let me tailor suggestions for your occasion! 🎯 For work: crisp blouses with tailored pants or skirts. For dates: something that makes you feel confident - maybe that dress with statement accessories! For casual: comfortable but put-together pieces like nice jeans with a cute top. What specific pieces caught your eye in your wardrobe? 👗✨"
-        elif any(word in message_lower for word in ["colors", "color", "matching"]):
-            response = "Great eye for color coordination! 🌈 I see some wonderful color options in your wardrobe! Try grouping similar tones together, or create contrast with light and dark pieces. Don't forget - neutrals like white, black, and navy go with almost everything and make great foundation pieces! What's your favorite color combination? 🎨✨"
-        elif any(word in message_lower for word in ["suggest", "recommend", "what", "wear"]):
-            response = "Based on what I can see in your wardrobe, here's what I'd suggest! 👗 Pick one standout piece as your focal point, then build around it with complementary items. Mix casual and dressy elements for that effortless chic look! Your wardrobe has such great potential - you just need to see the combinations! What's your style vibe today? ✨"
-        else:
-            response = "I'm your wardrobe analysis expert! 👗✨ I can help you discover amazing outfit combinations hiding in your closet! Tell me more about what you're looking for - specific occasions, color preferences, or style goals? Let's unlock your wardrobe's full potential! 🎉"
-
-        return {"response": response, "intent": "wardrobe_analysis"}
+        return {"response": response, "intent": "wardrobe_analysis", "requires_photo": True}
     except Exception as e:
         logger.error(f"Wardrobe analysis error: {e}")
+        return {"response": f"Oops! Wardrobe analysis emergency! 👗 Something went wrong: {str(e)}", "intent": "wardrobe_analysis"}
+
+@app.post("/wardrobe-analysis-with-image")
+async def wardrobe_analysis_with_image_endpoint(req: ImageAnalysisRequest):
+    """Analyze wardrobe from uploaded image"""
+    try:
+        logger.info(f"Wardrobe analysis with image from user {req.user_id}")
+
+        # Analyze the uploaded wardrobe image
+        wardrobe_analysis = analyze_wardrobe_image(req.image_data)
+
+        if not wardrobe_analysis["analysis_available"]:
+            return {"response": "Oops! I had trouble seeing your wardrobe clearly 🤔 Let's try taking another photo with better lighting and make sure your clothes are clearly visible! The clearer the photo, the better outfit suggestions I can give you! ✨", "intent": "wardrobe_analysis"}
+
+        # Generate personalized response based on image analysis
+        color_variety = wardrobe_analysis["color_variety"]
+        brightness_level = wardrobe_analysis["brightness_level"]
+
+        # Create outfit suggestions based on what we can "see"
+        base_response = "OMG, I'm so excited to dive into your wardrobe! 🎉👗 Based on your photo, I can see you have some amazing pieces to work with!\n\n"
+
+        if color_variety == "high":
+            color_suggestion = "🌈 **Color Variety:** I love how many different colors you have! This gives us so many options:\n• Try monochromatic looks with similar tones\n• Create contrast with light and dark pieces\n• Use neutrals as your base and add pops of color\n"
+        elif color_variety == "medium":
+            color_suggestion = "🎨 **Balanced Palette:** You have a nice mix of colors that work well together:\n• Focus on creating cohesive color stories\n• Mix and match pieces within the same color family\n• Add one statement piece per outfit\n"
+        else:
+            color_suggestion = "✨ **Classic Wardrobe:** I see you prefer a more curated, classic approach:\n• Perfect for creating timeless, elegant looks\n• Easy to mix and match everything\n• Add interesting textures or accessories for variety\n"
+
+        if brightness_level == "bright":
+            brightness_suggestion = "\n💡 **Styling Notes:** Your brighter pieces are perfect for:\n• Daytime and casual occasions\n• Spring/summer styling\n• Creating cheerful, energetic looks\n"
+        elif brightness_level == "medium":
+            brightness_suggestion = "\n🌟 **Styling Notes:** Your balanced tones are versatile for:\n• Both day and evening looks\n• Professional and casual settings\n• Year-round styling\n"
+        else:
+            brightness_suggestion = "\n🖤 **Styling Notes:** Your darker pieces are great for:\n• Evening and formal occasions\n• Fall/winter styling\n• Creating sophisticated, elegant looks\n"
+
+        outfit_suggestions = "\n👗 **My Top Outfit Suggestions:**\n\n**Look 1 - Classic Chic:**\n• Pick your most structured piece as the base\n• Add complementary pieces in similar tones\n• Finish with accessories that tie it together\n\n**Look 2 - Casual Cool:**\n• Start with comfortable basics\n• Layer with interesting textures or patterns\n• Add one statement element (bag, shoes, or jewelry)\n\n**Look 3 - Statement Style:**\n• Choose your most unique piece as the focal point\n• Keep everything else simple and complementary\n• Let that special piece shine!\n\n✨ **Style Tip:** The key is balance - if one piece is bold, keep the rest simple. If everything is neutral, add one fun element!"
+
+        response = base_response + color_suggestion + brightness_suggestion + outfit_suggestions
+
+        return {"response": response, "intent": "wardrobe_analysis", "analysis": wardrobe_analysis}
+    except Exception as e:
+        logger.error(f"Wardrobe analysis with image error: {e}")
         return {"response": f"Oops! Wardrobe analysis emergency! 👗 Something went wrong: {str(e)}", "intent": "wardrobe_analysis"}
 
 @app.get("/health")

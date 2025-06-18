@@ -59,10 +59,10 @@ export default function HomePage() {
             autoGainControl: true
           }
         })
-        
+
         setCameraStream(stream)
         setAudioStream(stream)
-        
+
         if (videoRef.current) {
           videoRef.current.srcObject = stream
         }
@@ -131,7 +131,7 @@ export default function HomePage() {
 
         // Show notification
         setShowCaptureNotification(true)
-        
+
         // Hide notification after 3 seconds
         setTimeout(() => {
           setShowCaptureNotification(false)
@@ -149,7 +149,7 @@ export default function HomePage() {
     if (typeof window !== 'undefined' && 'webkitSpeechRecognition' in window) {
       const SpeechRecognition = window.webkitSpeechRecognition || window.SpeechRecognition
       recognitionRef.current = new SpeechRecognition()
-      
+
       recognitionRef.current.continuous = true
       recognitionRef.current.interimResults = true
       recognitionRef.current.lang = 'en-US'
@@ -191,7 +191,7 @@ export default function HomePage() {
   // Process voice commands
   const processVoiceCommand = (command: string) => {
     console.log('Processing command:', command)
-    
+
     if (command.includes('analyze') && command.includes('color')) {
       // Navigate to color analysis
       window.location.href = '/color-analysis'
@@ -250,16 +250,20 @@ export default function HomePage() {
             </div>
           </div>
         )}
-        
+
         {/* Dark translucent gradient overlay for better text readability */}
         <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-black/20 pointer-events-none" />
       </div>
 
       {/* Voice Agent - Top Left */}
-      <VoiceAgent 
-        isListening={isListening}
-        onToggleListening={toggleVoiceListening}
-        transcript={transcript}
+      <VoiceAgent
+        capturedImage={capturedImage}
+        onTriggerCapture={capturePhoto}
+        onImageAnalyzed={() => {
+          console.log('Image analysis completed')
+          // Optionally clear the captured image after analysis
+          // setCapturedImage(null)
+        }}
       />
 
       {/* Centered Capture Button */}
